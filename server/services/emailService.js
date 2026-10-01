@@ -1,29 +1,28 @@
-const nodemailer = require("nodemailer");
+const nodemailer = require('nodemailer');
 
 const buildTransporter = () => {
-  const {
-    EMAIL_HOST,
-    EMAIL_PORT,
-    EMAIL_USER,
-    EMAIL_PASS,
-    EMAIL_SECURE,
-  } = process.env;
+  const { EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_SECURE } = process.env;
 
   if (!EMAIL_HOST || !EMAIL_USER || !EMAIL_PASS) {
-    console.error("❌ Email configuration is missing.");
-    console.error("EMAIL_HOST:", !!EMAIL_HOST);
-    console.error("EMAIL_USER:", !!EMAIL_USER);
-    console.error("EMAIL_PASS:", !!EMAIL_PASS);
+    console.error('❌ Email configuration is missing.');
+    console.error('EMAIL_HOST:', !!EMAIL_HOST);
+    console.error('EMAIL_USER:', !!EMAIL_USER);
+    console.error('EMAIL_PASS:', !!EMAIL_PASS);
+
     return null;
   }
 
   const transporter = nodemailer.createTransport({
     host: EMAIL_HOST,
     port: Number(EMAIL_PORT || 587),
-    secure: EMAIL_SECURE === "true",
+    secure: EMAIL_SECURE === 'true',
+
+    // Force IPv4 connection
+    family: 4,
+
     auth: {
       user: EMAIL_USER.trim(),
-      pass: EMAIL_PASS.replace(/\s+/g, ""),
+      pass: EMAIL_PASS.replace(/\s+/g, ''),
     },
   });
 
@@ -35,44 +34,38 @@ const testEmailConnection = async () => {
   const transporter = buildTransporter();
 
   if (!transporter) {
-    console.error("❌ SMTP transporter could not be created.");
+    console.error('❌ SMTP transporter could not be created.');
     return false;
   }
 
   try {
     await transporter.verify();
 
-    console.log("✅ Gmail SMTP connection successful!");
-    console.log("📧 Email:", process.env.EMAIL_USER);
+    console.log('✅ Gmail SMTP connection successful!');
+    console.log('📧 Email:', process.env.EMAIL_USER);
 
     return true;
   } catch (error) {
-    console.error("❌ Gmail SMTP connection failed!");
-    console.error("Error:", error.message);
+    console.error('❌ Gmail SMTP connection failed!');
+    console.error('Error:', error.message);
 
     return false;
   }
 };
 
-const sendOtpEmail = async ({
-  email,
-  otp,
-  purpose = "verification",
-}) => {
+const sendOtpEmail = async ({ email, otp, purpose = 'verification' }) => {
   const transporter = buildTransporter();
 
   if (!transporter) {
-    console.error("❌ Email transporter is not configured.");
+    console.error('❌ Email transporter is not configured.');
+
     return {
       sent: false,
       fallback: true,
     };
   }
 
-  const subject =
-    purpose === "reset"
-      ? "AcademiaOS Reset Code"
-      : "AcademiaOS Verification Code";
+  const subject = purpose === 'reset' ? 'AcademiaOS Reset Code' : 'AcademiaOS Verification Code';
 
   try {
     const info = await transporter.sendMail({
@@ -95,11 +88,7 @@ const sendOtpEmail = async ({
           </h2>
 
           <p style="color: #334155; margin-bottom: 18px;">
-            Your ${
-              purpose === "reset"
-                ? "password reset"
-                : "account verification"
-            } code is:
+            Your ${purpose === 'reset' ? 'password reset' : 'account verification'} code is:
           </p>
 
           <div style="
@@ -122,9 +111,9 @@ const sendOtpEmail = async ({
       `,
     });
 
-    console.log("✅ OTP email sent successfully!");
-    console.log("📧 To:", email);
-    console.log("📨 Message ID:", info.messageId);
+    console.log('✅ OTP email sent successfully!');
+    console.log('📧 To:', email);
+    console.log('📨 Message ID:', info.messageId);
 
     return {
       sent: true,
@@ -132,8 +121,8 @@ const sendOtpEmail = async ({
       messageId: info.messageId,
     };
   } catch (error) {
-    console.error("❌ OTP email failed!");
-    console.error("Error:", error.message);
+    console.error('❌ OTP email failed!');
+    console.error('Error:', error.message);
 
     throw error;
   }
