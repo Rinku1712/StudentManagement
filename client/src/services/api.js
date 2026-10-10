@@ -1,4 +1,5 @@
 const configuredApiUrl = import.meta.env.VITE_API_URL || '';
+const API_REQUEST_TIMEOUT_MS = 90_000;
 const API_BASE_URL = (
   configuredApiUrl || (import.meta.env.DEV ? 'http://localhost:5000' : '')
 ).replace(/\/+$/, '');
@@ -36,7 +37,7 @@ async function apiRequest(endpoint, options = {}) {
       },
       credentials: 'include',
       ...requestOptions,
-      signal: requestOptions.signal || AbortSignal.timeout(20000),
+      signal: requestOptions.signal || AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
