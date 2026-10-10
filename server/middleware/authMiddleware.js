@@ -12,7 +12,11 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Authentication token is required.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secretkey2026');
+    if (!process.env.JWT_SECRET) {
+      return res.status(503).json({ message: 'Authentication is not configured on the server.' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = isDatabaseConnected()
       ? await User.findById(decoded.id).select('-password')
       : dataStore.users.find((storedUser) => String(storedUser._id) === String(decoded.id));

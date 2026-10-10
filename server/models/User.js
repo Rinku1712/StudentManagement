@@ -80,11 +80,32 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    otp: {
+    otpHash: {
       type: String,
       default: null,
     },
     otpExpires: {
+      type: Date,
+      default: null,
+    },
+    otpPurpose: {
+      type: String,
+      enum: ['verification', 'reset', null],
+      default: null,
+    },
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+    otpLastSentAt: {
+      type: Date,
+      default: null,
+    },
+    otpResendCount: {
+      type: Number,
+      default: 0,
+    },
+    otpResendWindowStartedAt: {
       type: Date,
       default: null,
     },

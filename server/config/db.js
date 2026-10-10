@@ -4,12 +4,60 @@ const User = require('../models/User');
 
 let isDatabaseConnected = false;
 
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 3000 });
-    isDatabaseConnected = true;
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+mongoose.connection.on('connected', () => {
+  isDatabaseConnected = true;
+});
 
+mongoose.connection.on('disconnected', () => {
+  isDatabaseConnected = false;
+  console.warn('MongoDB connection was lost.');
+});
+
+mongoose.connection.on('error', (error) => {
+  console.error('MongoDB connection error.', {
+    name: error.name,
+    code: error.code,
+  });
+});
+
+const logDatabaseFailure = (operation, error) => {
+  console.error(`MongoDB ${operation} failed.`, {
+    name: error.name,
+    code: error.code,
+  });
+};
+
+const connectDB = async () => {
+  if (!process.env.MONGO_URI) {
+    isDatabaseConnected = false;
+    console.error('MongoDB connection is not configured: MONGO_URI is missing.');
+    return;
+  }
+
+  try {
+    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 3000 });
+    isDatabaseConnected = true;
+    console.log('MongoDB connected.');
+  } catch (error) {
+    isDatabaseConnected = false;
+    logDatabaseFailure('connection', error);
+    console.warn('The API is running without persistent database access.');
+    return;
+  }
+
+  try {
+    const cleanup = await User.collection.updateMany(
+      { otp: { $exists: true } },
+      { $unset: { otp: '' } },
+    );
+    if (cleanup.modifiedCount > 0) {
+      console.log('Removed legacy plaintext OTPs from existing accounts.');
+    }
+  } catch (error) {
+    logDatabaseFailure('legacy OTP cleanup', error);
+  }
+
+  try {
     if (process.env.SUPER_ADMIN_EMAIL && process.env.SUPER_ADMIN_PASSWORD) {
       const email = process.env.SUPER_ADMIN_EMAIL.trim().toLowerCase();
       const existingUser = await User.findOne({ email });
@@ -21,13 +69,11 @@ const connectDB = async () => {
           role: 'super-admin',
           isVerified: true,
         });
-        console.log('✅ Initial super-admin account created from environment configuration.');
+        console.log('Initial super-admin account created from environment configuration.');
       }
     }
   } catch (error) {
-    isDatabaseConnected = false;
-    console.error(`⚠️ MongoDB Warning: ${error.message}`);
-    console.log('👉 Server is running with temporary in-memory authentication storage.');
+    logDatabaseFailure('super-admin initialization', error);
   }
 };
 

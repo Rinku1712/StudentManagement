@@ -3,21 +3,22 @@ const dotenv = require('dotenv');
 
 dotenv.config({
   path: path.join(__dirname, '.env'),
-  override: true,
 });
 
 const express = require('express');
 const cors = require('cors');
 
-const { connectDB } = require('./config/db');
+const { connectDB, isDatabaseConnected } = require('./config/db');
 
 const authRoutes = require('./routes/authRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const schoolRoutes = require('./routes/schoolRoutes');
+const classroomRoutes = require('./routes/classroomRoutes');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ========================================
 // DATABASE CONNECTION
@@ -30,10 +31,15 @@ connectDB();
 // ========================================
 
 const allowedOrigins = [
-  process.env.CLIENT_ORIGIN,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  ...(process.env.CLIENT_ORIGIN
+    ? process.env.CLIENT_ORIGIN.split(',').map((origin) => origin.trim())
+    : []),
+  ...(process.env.NODE_ENV === 'production'
+    ? []
+    : ['http://localhost:5173', 'http://127.0.0.1:5173']),
 ].filter(Boolean);
+
+const allowedOriginSet = new Set(allowedOrigins);
 
 app.use(
   cors({
@@ -44,17 +50,17 @@ app.use(
         return callback(null, true);
       }
 
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOriginSet.has(origin)) {
         return callback(null, true);
       }
 
-      console.log('Blocked CORS origin:', origin);
+      console.warn('Blocked request from an origin not configured in CLIENT_ORIGIN.');
 
       return callback(new Error('Origin is not allowed by CORS.'));
     },
 
     credentials: true,
-  }),
+  ),
 );
 
 // ========================================
@@ -81,9 +87,18 @@ app.get('/', (req, res) => {
 // ========================================
 
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'API is healthy and running',
+  const databaseConnected = isDatabaseConnected();
+  const authConfigured =
+    Boolean(process.env.JWT_SECRET) &&
+    Boolean(process.env.OTP_SECRET && Buffer.byteLength(process.env.OTP_SECRET, 'utf8') >= 32) &&
+    Boolean(process.env.RESEND_API_KEY) &&
+    Boolean(process.env.EMAIL_FROM);
+  const ready = databaseConnected && (process.env.NODE_ENV !== 'production' || authConfigured);
+  res.status(ready ? 200 : 503).json({
+    success: ready,
+    database: databaseConnected ? 'connected' : 'unavailable',
+    authentication: authConfigured ? 'configured' : 'incomplete',
+    message: ready ? 'API dependencies are healthy.' : 'One or more required API dependencies are unavailable.',
   });
 });
 
@@ -101,6 +116,8 @@ app.use('/api/profile', profileRoutes);
 
 app.use('/api/school', schoolRoutes);
 
+app.use('/api/classrooms', classroomRoutes);
+
 // ========================================
 // 404 ROUTE
 // ========================================
@@ -117,11 +134,19 @@ app.use((req, res) => {
 // ========================================
 
 app.use((err, req, res, next) => {
-  console.error('❌ Server Error:', err);
+  const status = err.message === 'Origin is not allowed by CORS.' ? 403 : 500;
+  console.error('Request middleware failed.', {
+    name: err.name,
+    code: err.code,
+    status,
+  });
 
-  res.status(500).json({
+  res.status(status).json({
     success: false,
-    message: err.message || 'Internal Server Error',
+    message:
+      status === 403
+        ? 'This frontend origin is not allowed. Configure CLIENT_ORIGIN on the backend.'
+        : 'Internal server error.',
   });
 });
 
@@ -141,11 +166,15 @@ app.listen(PORT, () => {
 });
 
 // ========================================
-// EMAIL CONFIG CHECK
+// AUTH AND EMAIL CONFIG CHECK
 // ========================================
 
-if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  console.warn('⚠️ OTP email is not configured. Add EMAIL_HOST, EMAIL_USER, and EMAIL_PASS.');
-
-  console.warn('👉 OTPs may only be printed in the terminal until SMTP is configured.');
+if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+  console.warn('⚠️ OTP email is unavailable. Configure RESEND_API_KEY and EMAIL_FROM.');
+}
+if (!process.env.OTP_SECRET || Buffer.byteLength(process.env.OTP_SECRET, 'utf8') < 32) {
+  console.warn('⚠️ OTP verification is unavailable. Configure OTP_SECRET with at least 32 bytes.');
+}
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️ Authentication is unavailable. Configure JWT_SECRET.');
 }

@@ -34,11 +34,13 @@ const classroomSchema = new mongoose.Schema(
       trim: true,
       minlength: 6,
       maxlength: 6,
+      set: (value) => (value ? String(value).trim().toUpperCase() : value),
     },
     students: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
+        default: [],
       },
     ],
     isActive: {
