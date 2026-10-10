@@ -11,6 +11,7 @@ export default function ForgotPassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError('');
 
     try {
@@ -22,7 +23,7 @@ export default function ForgotPassword() {
 
       localStorage.setItem('pendingSignupEmail', result.email);
       localStorage.setItem('pendingAuthFlow', 'reset');
-      navigate('/verify-otp');
+      navigate('/verify-otp', { state: { message: result.message } });
     } catch (err) {
       setError(err.message || 'Unable to send reset code.');
     } finally {

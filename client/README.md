@@ -10,13 +10,15 @@ From this directory, install dependencies:
 npm install
 ```
 
-The API URL defaults to `http://localhost:5000`. To override it, create `client/.env`:
+For local development, copy `.env.example` to `.env` in this directory:
 
 ```env
 VITE_API_URL=http://localhost:5000
 ```
 
-The backend must be running before authenticated features can load data.
+For a Vercel deployment, set `VITE_API_URL` in the Vercel project's **Environment Variables** to the HTTPS URL of the deployed Render API (for example, `https://your-api.onrender.com`). Vite embeds this value at build time, so redeploy after changing it. Production builds reject missing or localhost API URLs rather than silently calling a developer machine.
+
+The backend must be running before authenticated features can load data. Configure its `CLIENT_ORIGIN` to the exact Vercel site origin; see [the server setup](../server/README.md).
 
 ## Commands
 

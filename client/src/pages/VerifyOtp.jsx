@@ -1,19 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, ArrowLeft, CheckCircle2, RefreshCcw } from 'lucide-react';
 import { apiRequest } from '../services/api';
 
 export default function VerifyOtp() {
   const navigate = useNavigate();
+  const location = useLocation();
   const inputRefs = useRef([]);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [otpMessage, setOtpMessage] = useState({
     type: 'info',
-    text: 'A 6-digit code was sent to your registered email.',
+    text: location.state?.message || 'Enter the 6-digit code for your email address.',
   });
   const [resendSeconds, setResendSeconds] = useState(30);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
     if (resendSeconds <= 0) return undefined;
@@ -78,7 +80,15 @@ export default function VerifyOtp() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     const finalOtp = otp.join('');
+    const email = localStorage.getItem('pendingSignupEmail') || '';
+    const isPasswordReset = localStorage.getItem('pendingAuthFlow') === 'reset';
+
+    if (!email) {
+      setOtpMessage({ type: 'error', text: 'No email is available. Start the signup or password-reset flow again.' });
+      return;
+    }
 
     if (finalOtp.length !== 6) {
       setOtpMessage({ type: 'error', text: 'Please enter all 6 digits to verify.' });
@@ -87,8 +97,6 @@ export default function VerifyOtp() {
 
     try {
       setIsSubmitting(true);
-      const email = localStorage.getItem('pendingSignupEmail') || '';
-      const isPasswordReset = localStorage.getItem('pendingAuthFlow') === 'reset';
       await apiRequest(isPasswordReset ? '/api/auth/reset-password' : '/api/auth/verify-otp', {
         method: 'POST',
         body: JSON.stringify(isPasswordReset ? { email, otp: finalOtp, password: newPassword } : { email, otp: finalOtp }),
@@ -106,7 +114,7 @@ export default function VerifyOtp() {
   };
 
   const handleResend = async () => {
-    if (resendSeconds > 0) return;
+    if (resendSeconds > 0 || isResending || isSubmitting) return;
 
     const email = localStorage.getItem('pendingSignupEmail') || '';
     if (!email) {
@@ -115,16 +123,27 @@ export default function VerifyOtp() {
     }
 
     try {
-      await apiRequest('/api/auth/forgot-password', {
+      setIsResending(true);
+      const isPasswordReset = localStorage.getItem('pendingAuthFlow') === 'reset';
+      const result = await apiRequest(
+        isPasswordReset ? '/api/auth/forgot-password' : '/api/auth/resend-otp',
+        {
         method: 'POST',
         body: JSON.stringify({ email }),
-      });
+        },
+      );
       setOtp(['', '', '', '', '', '']);
       setResendSeconds(30);
-      setOtpMessage({ type: 'info', text: 'A new verification code has been sent.' });
+      setOtpMessage({ type: 'success', text: result.message });
       inputRefs.current[0]?.focus();
     } catch (err) {
       setOtpMessage({ type: 'error', text: err.message || 'Unable to resend OTP.' });
+      if (err.status === 429) {
+        const retryAfter = Number(err.message.match(/wait (\d+) seconds/i)?.[1]);
+        setResendSeconds(retryAfter || 60);
+      }
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -138,7 +157,10 @@ export default function VerifyOtp() {
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Two-Step Verification</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Enter the 6-digit code sent to your registered email.
+            Enter the 6-digit code for{' '}
+            <span className="font-medium text-slate-700">
+              {localStorage.getItem('pendingSignupEmail') || 'your email address'}
+            </span>
           </p>
         </div>
 
@@ -161,6 +183,7 @@ export default function VerifyOtp() {
                   autoComplete="one-time-code"
                   className="w-12 h-12 text-center text-lg font-semibold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all"
                   value={data}
+                  disabled={isSubmitting || isResending}
                   onChange={(e) => handleChange(e.target.value, index)}
                   onKeyDown={(e) => handleKeyDown(e, index)}
                   onFocus={(e) => e.target.select()}
@@ -201,7 +224,7 @@ export default function VerifyOtp() {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isResending}
             className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-medium py-2.5 rounded-lg text-sm transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <CheckCircle2 size={16} /> {isSubmitting ? 'Verifying...' : 'Verify OTP'}
@@ -215,11 +238,15 @@ export default function VerifyOtp() {
           <button
             type="button"
             onClick={handleResend}
-            disabled={resendSeconds > 0}
+            disabled={resendSeconds > 0 || isResending || isSubmitting}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed"
           >
             <RefreshCcw size={13} />
-            {resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Resend OTP'}
+            {isResending
+              ? 'Sending...'
+              : resendSeconds > 0
+                ? `Resend in ${resendSeconds}s`
+                : 'Resend OTP'}
           </button>
         </div>
       </div>

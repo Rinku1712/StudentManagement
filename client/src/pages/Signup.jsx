@@ -1,5 +1,5 @@
 import { ArrowRight, Building2, Eye, EyeOff, GraduationCap, Lock, Mail, User } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../services/api';
 
@@ -10,9 +10,11 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionInProgress = useRef(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submissionInProgress.current) return;
     setError('');
 
     if (formData.password.length < 6) {
@@ -21,6 +23,7 @@ export default function Signup() {
     }
 
     try {
+      submissionInProgress.current = true;
       setIsSubmitting(true);
       const result = await apiRequest('/api/auth/signup', {
         method: 'POST',
@@ -34,10 +37,21 @@ export default function Signup() {
 
       localStorage.setItem('pendingSignupEmail', result.email);
       localStorage.setItem('pendingAuthFlow', 'verify');
-      navigate('/verify-otp');
+      navigate('/verify-otp', { state: { message: result.message } });
     } catch (err) {
+      if (err.code === 'ACCOUNT_UNVERIFIED') {
+        localStorage.setItem('pendingSignupEmail', formData.email.trim().toLowerCase());
+        localStorage.setItem('pendingAuthFlow', 'verify');
+        navigate('/verify-otp', {
+          state: {
+            message: 'An unverified account already uses this email. Enter its active code or request a new one.',
+          },
+        });
+        return;
+      }
       setError(err.message || 'Unable to create account.');
     } finally {
+      submissionInProgress.current = false;
       setIsSubmitting(false);
     }
   };
